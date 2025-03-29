@@ -1,0 +1,90 @@
+# Refap Configuration File
+# This is the main configuration file for Refap (Rex Factory Patriot)
+# All values shown here are defaults and can be modified as needed
+
+# ---------------------------------------------------------
+# General settings for the application
+# ---------------------------------------------------------
+[general]
+# Root directory for all downloaded files
+output_dir = "./downloads"
+# Path for log files
+log_path = "./logs/refap.log"
+# Log level (debug, info, warn, error)
+log_level = "info"
+# Number of concurrent downloads
+concurrent_downloads = 4
+
+# ---------------------------------------------------------
+# Artifactory connection settings
+# ---------------------------------------------------------
+[artifactory]
+# Base URL of the Artifactory instance
+url = "http://artifactory.example.com:8082/artifactory/list/"
+# List of repositories to export (will be processed even if not in repo_list file)
+repositories = [
+  "maven-central/org/springframework/spring-core",
+  "maven-central/com/google/guava/guava",
+  "maven-central/org/apache/commons/commons-lang3"
+]
+# Path to file containing additional repositories (one per line)
+repo_list = "liste_arti.csv"
+# File types to download (comma-separated list) - only used if filtering mode is "none"
+file_types = ".pom,.jar,.war,.xml,.zip,.tar,.tar.gz"
+# Whether to replace existing files when downloading
+force_replace = false
+
+# ---------------------------------------------------------
+# File filtering settings
+# ---------------------------------------------------------
+[files]
+# Filtering mode (whitelist, blacklist, none)
+# - whitelist: Only download files with extensions in the list
+# - blacklist: Download all files except those with extensions in the list
+# - none: Download all files specified in file_types (legacy mode)
+filter_mode = "whitelist"
+# Extensions to include or exclude based on the filtering mode
+extensions = [".jar", ".pom", ".war", ".zip", ".tar", ".tar.gz"]
+# Whether to include maven-metadata.xml files regardless of filter settings
+include_maven_metadata = true
+# Whether to clean up HTML index files after processing
+clean_html_files = true
+
+# ---------------------------------------------------------
+# Download behavior settings
+# ---------------------------------------------------------
+[download]
+# Number of retry attempts for failed downloads
+retry_attempts = 3
+# Timeout in seconds for HTTP requests
+timeout = 10
+# Delay between download attempts in seconds
+delay = 1
+
+# ---------------------------------------------------------
+# Proxy configuration
+# ---------------------------------------------------------
+[proxy]
+# Whether to use a proxy for HTTP requests
+enabled = false
+# Proxy host address
+host = ""
+# Proxy port number
+port = 0
+# Username for proxy authentication (if required)
+username = ""
+# Password for proxy authentication (if required)
+password = ""
+
+# ---------------------------------------------------------
+# Authentication settings for Artifactory
+# ---------------------------------------------------------
+[auth]
+# Authentication type (none, basic, token)
+type = "none"
+# Username for basic authentication
+username = ""
+# Password for basic authentication
+password = ""
+# Access token for token-based authentication
+access_token = ""

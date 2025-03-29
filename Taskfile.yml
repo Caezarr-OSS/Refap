@@ -1,0 +1,68 @@
+version: '3'
+
+vars:
+  BINARY_NAME: refap
+  VERSION:
+    sh: git describe --tags --always --dirty
+  COMMIT:
+    sh: git rev-parse --short HEAD
+  DATE:
+    sh: date -u '+%Y-%m-%d_%H:%M:%S'
+  BUILD_DIR: dist
+  BUILD_FLAGS: -ldflags "-s -w -X main.Version={{.VERSION}} -X main.CommitSHA={{.COMMIT}} -X main.BuildDate={{.DATE}}"
+
+tasks:
+  build:
+    desc: Build for the current platform
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - go build {{.BUILD_FLAGS}} -o {{.BUILD_DIR}}/{{.BINARY_NAME}} ./cmd/refap
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v ./...
+
+  lint:
+    desc: Run linters
+    cmds:
+      - go vet ./...
+      - |
+        if ! command -v golangci-lint &> /dev/null; then
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        fi
+      - golangci-lint run
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - mkdir -p {{.BUILD_DIR}}
+
+  release-local:
+    desc: Build a release binary for your current OS only
+    cmds:
+      - task: build
+      - echo "Binary built for {{OS}}/{{ARCH}} -> {{.BUILD_DIR}}/{{.BINARY_NAME}}"
+    silent: false
+
+  release:
+    desc: Build release binaries for all supported platforms
+    deps: [clean, test]
+    cmds:
+      # Linux
+      - echo "Building for Linux..."
+      - GOOS=linux GOARCH=amd64 go build {{.BUILD_FLAGS}} -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-linux-amd64 ./cmd/refap
+      - GOOS=linux GOARCH=arm64 go build {{.BUILD_FLAGS}} -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-linux-arm64 ./cmd/refap
+      
+      # Windows
+      - echo "Building for Windows..."
+      - GOOS=windows GOARCH=amd64 go build {{.BUILD_FLAGS}} -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-windows-amd64.exe ./cmd/refap
+      
+      # macOS
+      - echo "Building for macOS..."
+      - GOOS=darwin GOARCH=amd64 go build {{.BUILD_FLAGS}} -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-darwin-amd64 ./cmd/refap
+      - GOOS=darwin GOARCH=arm64 go build {{.BUILD_FLAGS}} -o {{.BUILD_DIR}}/{{.BINARY_NAME}}-darwin-arm64 ./cmd/refap
+      
+      - echo "Release binaries created in {{.BUILD_DIR}}/"
+    silent: false
