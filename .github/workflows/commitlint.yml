@@ -2,7 +2,7 @@ name: Validate Commits
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, 'feature/*', 'release/*']
   pull_request:
     branches: [develop, main]
 
