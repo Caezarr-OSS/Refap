@@ -5,7 +5,7 @@ Tous les changements notables apportés à ce projet seront documentés dans ce 
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.1.0] - 2025-03-29
+## [0.1.0] - 2025-03-29
 
 ### Added
 - Migration initiale du projet Python vers Go
