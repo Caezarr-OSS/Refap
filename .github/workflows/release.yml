@@ -1,0 +1,73 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+*"  # Supports SemVer + pre-releases like "-RC1", "-beta"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Install Task
+        uses: arduino/setup-task@v1
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install git-chglog
+        run: |
+          go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Generate Changelog
+        run: |
+          # Extract version from tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          
+          # Generate changelog if git-chglog config exists, otherwise use placeholder
+          if [ -f .chglog/config.yml ]; then
+            git-chglog -o RELEASE_CHANGELOG.md $VERSION
+          else
+            echo "# Release $VERSION" > RELEASE_CHANGELOG.md
+            git log $(git describe --tags --abbrev=0 HEAD^)..HEAD --pretty=format:"* %s" >> RELEASE_CHANGELOG.md
+          fi
+
+      - name: Run tests
+        run: task test
+
+      - name: Build release binaries
+        run: task release
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            dist/refap-linux-amd64
+            dist/refap-linux-arm64
+            dist/refap-windows-amd64.exe
+            dist/refap-darwin-amd64
+            dist/refap-darwin-arm64
+          body_path: RELEASE_CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
