@@ -8,6 +8,7 @@ import (
 
 	"github.com/caezarr-oss/refap/config"
 	"github.com/caezarr-oss/refap/internal/crawler"
+	"github.com/caezarr-oss/refap/internal/pathutil"
 )
 
 var (
@@ -38,22 +39,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Ensure output directory exists
-	if err := os.MkdirAll(cfg.General.OutputDir, 0755); err != nil {
+	// Sanitize and ensure output directory exists
+	safeOutputDir := pathutil.SanitizePath(cfg.General.OutputDir)
+	if err := pathutil.EnsureDirectoryExists(safeOutputDir); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating output directory: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Ensure log directory exists
-	if err := os.MkdirAll(cfg.General.LogPath, 0755); err != nil {
+	// Update the configuration with the sanitized path
+	cfg.General.OutputDir = safeOutputDir
+
+	// Sanitize and ensure log directory exists
+	safeLogPath := pathutil.SanitizePath(cfg.General.LogPath)
+	if err := pathutil.EnsureDirectoryExists(safeLogPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating log directory: %v\n", err)
 		os.Exit(1)
 	}
 
+	// Update the configuration with the sanitized path
+	cfg.General.LogPath = safeLogPath
+
 	// Create crawler instance with configuration
 	c := crawler.New(crawler.Config{
 		ArtiURL:            cfg.Artifactory.URL,
-		BaseDir:            cfg.General.OutputDir,
+		BaseDir:            safeOutputDir,
 		FileTypes:          cfg.GetFileTypesList(),
 		ForceReplace:       cfg.Artifactory.ForceReplace,
 		RetryAttempts:      cfg.Download.RetryAttempts,
@@ -69,18 +78,29 @@ func main() {
 		AuthUsername:       cfg.Auth.Username,
 		AuthPassword:       cfg.Auth.Password,
 		AuthAccessToken:    cfg.Auth.AccessToken,
+		FilterMode:         cfg.GetFilterMode(),
+		Extensions:         cfg.GetFileTypesList(),
 	})
 
-	// Process repository list
+	// Process repository list with safe path handling
 	repoListPath := cfg.Artifactory.RepoList
 	if !filepath.IsAbs(repoListPath) {
-		repoListPath = filepath.Join(cfg.General.OutputDir, repoListPath)
+		repoListPath = pathutil.SafeJoin(safeOutputDir, repoListPath)
+	} else {
+		repoListPath = pathutil.SanitizePath(repoListPath)
 	}
 
 	fmt.Printf("Refap starting...\n")
 	fmt.Printf("Artifactory URL: %s\n", cfg.Artifactory.URL)
 	fmt.Printf("Repository list: %s\n", repoListPath)
-	fmt.Printf("Output directory: %s\n", cfg.General.OutputDir)
+	fmt.Printf("Output directory: %s\n", safeOutputDir)
+	
+	// Print platform-specific information
+	if pathutil.IsWindowsOS() {
+		fmt.Println("Running on Windows - Using Windows-compatible path handling")
+	} else {
+		fmt.Println("Running on Unix/Linux - Using Unix path handling")
+	}
 
 	if err := c.ParseRepoList(repoListPath); err != nil {
 		fmt.Fprintf(os.Stderr, "Error processing repository list: %v\n", err)
