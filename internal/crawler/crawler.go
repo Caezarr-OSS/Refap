@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/caezarr-oss/refap/config"
+	"github.com/caezarr-oss/refap/internal/pathutil"
 )
 
 // Configuration options for the crawler
@@ -55,22 +56,26 @@ type Crawler struct {
 
 // ParseIndex parses an HTML index file and downloads all referenced files
 func (c *Crawler) ParseIndex(file, path, artiURL string) error {
+	// Sanitize file and path for Windows compatibility
+	safeFile := pathutil.SanitizePath(file)
+	safePath := pathutil.SanitizePath(path)
+	
 	// Add the HTML file to the list for potential cleanup later
-	absPath, err := filepath.Abs(file)
+	absPath, err := filepath.Abs(safeFile)
 	if err == nil {
 		c.htmlFiles = append(c.htmlFiles, absPath)
 	}
 
 	// Detect encoding and read file
-	f, err := os.Open(file)
+	f, err := os.Open(safeFile)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 
 	// Change to the specified directory
-	if err := os.Chdir(path); err != nil {
-		return fmt.Errorf("failed to change directory to %s: %w", path, err)
+	if err := os.Chdir(safePath); err != nil {
+		return fmt.Errorf("failed to change directory to %s: %w", safePath, err)
 	}
 
 	// Read the file line by line
@@ -113,18 +118,27 @@ func (c *Crawler) ParseIndex(file, path, artiURL string) error {
 				if !strings.HasSuffix(elValue, "/") {
 					// Check if file already exists and if we should skip it
 					if !c.config.ForceReplace {
-						if _, err := os.Stat(filepath.Join(path, elValue)); err == nil {
+						safeElPath := pathutil.SafeJoin(safePath, elValue)
+						if _, err := os.Stat(safeElPath); err == nil {
 							continue
 						}
 					}
 
-					fmt.Printf("Downloading %s in %s\n", elValue, path)
+					fmt.Printf("Downloading %s in %s\n", elValue, safePath)
 					if err := c.downloadFile(elValue, artiURL+urlValue); err != nil {
 						// Log failed download and continue
-						failLog, err := os.OpenFile(filepath.Join(os.Getenv("USERPROFILE"), "Documents", "EXPORT_ARTI", "failed_download.txt"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-						if err == nil {
-							fmt.Fprintf(failLog, "wget --timeout=%d --tries=%d -O %s %s\n", c.config.Timeout, c.config.RetryAttempts, elValue, artiURL+urlValue)
-							failLog.Close()
+						// Use HOME directory instead of hard-coded USERPROFILE for cross-platform compatibility
+						logDir := os.Getenv("HOME")
+						if pathutil.IsWindowsOS() {
+							logDir = os.Getenv("USERPROFILE")
+						}
+						failLogPath := pathutil.SafeJoin(logDir, "Documents", "EXPORT_ARTI", "failed_download.txt")
+						if err := pathutil.EnsureDirectoryExists(filepath.Dir(failLogPath)); err == nil {
+							failLog, err := os.OpenFile(failLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+							if err == nil {
+								fmt.Fprintf(failLog, "wget --timeout=%d --tries=%d -O %s %s\n", c.config.Timeout, c.config.RetryAttempts, elValue, artiURL+urlValue)
+								failLog.Close()
+							}
 						}
 					}
 					// Wait between downloads as specified in config
@@ -138,9 +152,9 @@ func (c *Crawler) ParseIndex(file, path, artiURL string) error {
 					continue
 				}
 
-				// Create directory
-				dirPath := filepath.Join(path, elValue)
-				if err := os.MkdirAll(dirPath, 0755); err != nil {
+				// Create directory with safe path handling
+				dirPath := pathutil.SafeJoin(safePath, elValue)
+				if err := pathutil.EnsureDirectoryExists(dirPath); err != nil {
 					fmt.Printf("Failed to create directory %s: %v\n", dirPath, err)
 					continue
 				}
@@ -151,8 +165,8 @@ func (c *Crawler) ParseIndex(file, path, artiURL string) error {
 					continue
 				}
 
-				// Generate index file name
-				indexName := strings.Replace(elValue, "/", "", -1) + "-index.html"
+				// Generate index file name - sanitize it for Windows
+				indexName := pathutil.SanitizeFilename(strings.Replace(elValue, "/", "", -1) + "-index.html")
 				
 				// Download index file
 				fmt.Printf("Downloading index for %s\n", elValue)
@@ -163,7 +177,7 @@ func (c *Crawler) ParseIndex(file, path, artiURL string) error {
 
 				// Parse the new index file
 				fmt.Printf("Parsing: %s / %s in new path: %s\n", indexName, artiURL+urlValue, dirPath)
-				if err := c.ParseIndex(indexName, dirPath+"/", artiURL+urlValue); err != nil {
+				if err := c.ParseIndex(indexName, filepath.Join(dirPath, "/"), artiURL+urlValue); err != nil {
 					fmt.Printf("Failed to parse index %s: %v\n", indexName, err)
 				}
 				
@@ -235,6 +249,9 @@ func (c *Crawler) shouldDownloadFile(filePath string) bool {
 
 // downloadFile downloads a file from the given URL and saves it to the specified path
 func (c *Crawler) downloadFile(filepath, urlStr string) error {
+	// Sanitize the filepath for Windows compatibility
+	safeFilepath := pathutil.SanitizeFilename(filepath)
+	
 	// Configure client with timeout
 	client := &http.Client{
 		Timeout: time.Duration(c.config.Timeout) * time.Second,
@@ -306,7 +323,8 @@ func (c *Crawler) downloadFile(filepath, urlStr string) error {
 
 	defer resp.Body.Close()
 
-	outFile, err := os.Create(filepath)
+	// Create file with safe path handling
+	outFile, err := pathutil.SafeCreateFile(safeFilepath)
 	if err != nil {
 		return err
 	}
@@ -318,24 +336,23 @@ func (c *Crawler) downloadFile(filepath, urlStr string) error {
 
 // CleanupHTMLFiles removes all HTML index files created during the crawling process
 func (c *Crawler) CleanupHTMLFiles() error {
-	if !c.config.CleanHTMLFiles {
-		return nil
-	}
-
-	fmt.Println("Cleaning up temporary HTML index files...")
+	var lastErr error
 	for _, file := range c.htmlFiles {
-		if err := os.Remove(file); err != nil {
-			fmt.Printf("Warning: Failed to remove HTML file %s: %v\n", file, err)
+		safeFile := pathutil.SanitizePath(file)
+		if err := os.Remove(safeFile); err != nil {
+			lastErr = err
+			fmt.Printf("Failed to remove HTML file %s: %v\n", safeFile, err)
 		}
 	}
-	return nil
+	return lastErr
 }
 
 // ProcessRepositories processes all repositories defined in the configuration
 func (c *Crawler) ProcessRepositories(repoList []string) error {
-	// Create the base directory if it doesn't exist
-	if err := os.MkdirAll(c.config.BaseDir, 0755); err != nil {
-		return fmt.Errorf("failed to create base directory: %w", err)
+	// Ensure the base directory exists and is sanitized
+	safeBaseDir := pathutil.SanitizePath(c.config.BaseDir)
+	if err := pathutil.EnsureDirectoryExists(safeBaseDir); err != nil {
+		return fmt.Errorf("failed to create base directory %s: %w", safeBaseDir, err)
 	}
 
 	// Create the export directory if it doesn't exist
@@ -352,7 +369,7 @@ func (c *Crawler) ProcessRepositories(repoList []string) error {
 		}
 
 		// Create repo-specific directory if it doesn't exist
-		repoDir := filepath.Join(c.config.BaseDir, strings.ReplaceAll(repo, "/", string(os.PathSeparator)))
+		repoDir := filepath.Join(safeBaseDir, strings.ReplaceAll(repo, "/", string(os.PathSeparator)))
 		if err := os.MkdirAll(filepath.Dir(repoDir), 0755); err != nil {
 			fmt.Printf("Failed to create repository directory: %v\n", err)
 			continue
@@ -370,7 +387,7 @@ func (c *Crawler) ProcessRepositories(repoList []string) error {
 
 		// Parse the main index
 		fmt.Printf("Parsing index: %s\n", mainIndexName)
-		if err := c.ParseIndex(mainIndexName, c.config.BaseDir+"/", c.config.ArtiURL+repo); err != nil {
+		if err := c.ParseIndex(mainIndexName, safeBaseDir+"/", c.config.ArtiURL+repo); err != nil {
 			fmt.Printf("Failed to parse index for repo %s: %v\n", repo, err)
 		}
 	}
