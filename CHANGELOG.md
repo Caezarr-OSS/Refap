@@ -5,6 +5,21 @@ Tous les changements notables apportés à ce projet seront documentés dans ce 
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-03-29
+
+### Added
+- Support des chemins Windows
+- Package dédié à la gestion des chemins (internal/pathutil)
+- Détection automatique de la plateforme (Windows/Unix)
+- Gestion des chemins longs Windows (>260 caractères)
+- Gestion des caractères invalides dans les noms de fichiers Windows
+- Gestion des noms de fichiers réservés sous Windows
+
+### Changed
+- Amélioration de la structure du projet avec séparation des responsabilités
+- Utilisation de chemins sanitisés pour toutes les opérations de fichiers
+- Meilleure gestion des erreurs pour les opérations de fichiers
+
 ## [0.1.0] - 2025-03-29
 
 ### Added
