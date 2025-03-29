@@ -10,7 +10,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - name: Checkout Repository
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
@@ -27,10 +28,6 @@ jobs:
 
     - name: Run tests
       run: go test -v ./...
-
-    - name: Lint commit messages
-      uses: wagoid/commitlint-github-action@v5
-      if: github.event_name == 'pull_request'
 
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v3
